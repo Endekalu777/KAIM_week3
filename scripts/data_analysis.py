@@ -4,6 +4,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import importlib
 from IPython.display import display
+import warnings
+warnings.filterwarnings(
+    "ignore", category = FutureWarning
+)
+warnings.filterwarnings(
+
+    "ignore", category  = UserWarning
+)
 
 
 class DataAnalysis():
@@ -12,16 +20,20 @@ class DataAnalysis():
 
     def data_display(self):
         display(self.df.head())
-        display(self.df.shape)
+        print(f"DataFrame shape: {self.df.shape}")
         
     def data_description(self):
-        numerical_columns = self.df.select_dtypes(include = 'number').columns
-        categorical_columns = self.df.select_dtypes(exclude = 'number').columns
+        numerical_columns = self.df.select_dtypes(include='number').columns
+        categorical_columns = self.df.select_dtypes(exclude='number').columns
+        
         print("Numerical columns:")
         display(numerical_columns)
-        print("\nCategorical columns")
-        display(categorical_columns)        
-        display(self.df[numerical_columns].describe())
+        print("\nCategorical columns:")
+        display(categorical_columns)
+        
+        desc = self.df[numerical_columns].describe()
+        desc.loc['variability'] = desc.loc['std'] / desc.loc['mean']
+        display(desc)
 
     def handle_missing_values(self):
         # Categorical Columns
@@ -75,32 +87,70 @@ class DataAnalysis():
                 self.df[col] = pd.to_datetime(self.df[col], errors='coerce')
                 print(f"Converted {col} to datetime")
 
-    def Data_quality(self):
-        display(self.df.isnull().sum())
+    def data_quality(self):
+        missing_values = self.df.isnull().sum()
+        missing_percentages = 100 * missing_values / len(self.df)
+        missing_table = pd.concat([missing_values, missing_percentages], axis=1, keys=['Missing Values', 'Percentage'])
+        display(missing_table.sort_values('Percentage', ascending=False))
+
 
     def Univariate_analysis(self):
-        numerical_columns = self.df.select_dtypes(include = 'number').columns
-        categorical_columns = self.df.select_dtypes(exclude = 'number').columns
-        n_rows = 5
-        n_cols = int(np.ceil(len(numerical_columns) / n_rows))
-        plt.figure(figsize = (15, n_rows * 5))
+        # Identify numerical and categorical columns
+        numerical_columns = self.df.select_dtypes(include='number').columns
+        categorical_columns = self.df.select_dtypes(exclude='number').columns
+        
+        # Plot for numerical columns
+        n_cols = 3
+        n_rows = int(np.ceil(len(numerical_columns) / n_cols))
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
+        axes = axes.flatten()
+        
         for i, col in enumerate(numerical_columns):
-            plt.subplot(n_rows, n_cols, i + 1)
-            sns.histplot(self.df[col], bins = 30, kde = True)
-            plt.title(f"Distribution of {col}")
-            plt.xlabel(col)
-            plt.ylabel("frequency")
+            ax = axes[i]
+            sns.histplot(self.df[col], bins=30, kde=True, ax=ax)
+            ax.set_title(f"Distribution of {col}")
+            ax.set_xlabel(col)
+            ax.set_ylabel("Frequency")
+        
+        # Remove extra subplots
+        for j in range(i + 1, len(axes)):
+            fig.delaxes(axes[j])
+        
         plt.tight_layout()
         plt.show()
 
-        for col in categorical_columns:
-            plt.figure(figsize = (10, 5))
-            sns.countplot(data = self.df, x = col)
-            plt.title(f"Distribution of {col}")
-            plt.xticks(rotation = 60)
-            plt.xlabel(col)
-            plt.ylabel('Count')
-            plt.show()
+        # Plot for categorical columns
+        if len(categorical_columns) > 0:
+            n_cols = 4
+            n_rows = int(np.ceil(len(categorical_columns) / n_cols))
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
+            axes = axes.flatten()
+            
+            for i, col in enumerate(categorical_columns):
+                ax = axes[i]
+                value_counts = self.df[col].value_counts()
+                top_n = 15  # Show top 15 categories
+                
+                if len(value_counts) > top_n:
+                    other = pd.Series({'Other': value_counts.iloc[top_n:].sum()})
+                    value_counts = pd.concat([value_counts.iloc[:top_n], other])
+                
+                sns.barplot(x=value_counts.index, y=value_counts.values, ax=ax)
+                ax.set_title(f"Distribution of {col}")
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+                ax.set_ylabel('Count')
+                
+                # Add value labels on top of each bar
+                for p in ax.patches:
+                    ax.annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                                ha='center', va='center', xytext=(0, 10), textcoords='offset points')
+
+            # Remove extra subplots
+            for j in range(i + 1, len(axes)):
+                fig.delaxes(axes[j])
+        
+        plt.tight_layout()
+        plt.show()
 
     def monthly_changes(self):
         # Convert 'PostalCode' to category type and 'TransactionMonth' to datetime type
@@ -204,14 +254,12 @@ class DataAnalysis():
         # Before creating a heatmap, ensure only numeric data is used
         plt.figure(figsize=(10, 8))
         
-        # Convert columns to numeric, forcing errors to NaN
-        numeric_df = self.df.apply(pd.to_numeric, errors='coerce')
-        
-        # Drop columns with all NaN values (if there are any after coercion)
-        numeric_df = numeric_df.dropna(axis=1, how='all')
+        correlation_columns = self.df[['Cylinders', 'cubiccapacity', 'kilowatts', 'NumberOfDoors', 'CustomValueEstimate', 'CapitalOutstanding', 'SumInsured', 'CalculatedPremiumPerTerm', 'TotalPremium', 'TotalClaims']]
+        correlation_columns_numeric = correlation_columns.apply(pd.to_numeric, errors = 'coerce')
+        correlation_columns_numeric = correlation_columns_numeric.dropna(axis = 1, how ='all')
 
         # Calculate the correlation matrix
-        correlation_matrix = numeric_df.corr()
+        correlation_matrix = correlation_columns_numeric.corr()
 
         # Generate the heatmap
         sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', linewidths=0.5)
@@ -227,7 +275,7 @@ class DataAnalysis():
 
     def run_analysis(self): 
         self.data_display()
-        self.Data_quality()
+        self.data_quality()
         self.data_description()
         self.handle_missing_values()
         self.data_type()
