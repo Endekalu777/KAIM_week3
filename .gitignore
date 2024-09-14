@@ -26,4 +26,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-data/
+/data
+/storage
