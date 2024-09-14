@@ -26,5 +26,4 @@ Thumbs.db
 .idea/
 .vscode/
 
-/data
-/storage
+/notebooks
