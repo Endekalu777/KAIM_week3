@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 class DataAnalysis:
     def __init__(self, filepath):
-        self.df = pd.read_csv(filepath, delimiter='|', low_memory=False)
+        self.df = pd.read_csv(filepath)
 
     def data_display(self):
         display(self.df.head())
@@ -36,34 +36,37 @@ class DataAnalysis:
         # Categorical Columns - Replace missing values with 'Unknown'
         categorical_columns = [
             'Bank', 'AccountType', 'MaritalStatus', 'Gender', 'Province', 'PostalCode',
-            'MainCrestaZone', 'SubCrestaZone', 'ItemType', 'make', 'Model', 'bodytype'
+            'MainCrestaZone', 'SubCrestaZone', 'ItemType', 'make', 'Model', 'bodytype',
+            'VehicleType', 'AlarmImmobiliser', 'TrackingDevice', 'TermFrequency',
+            'ExcessSelected', 'CoverCategory', 'CoverType', 'CoverGroup', 'Section',
+            'Product', 'StatutoryClass', 'StatutoryRiskType'
         ]
 
         for col in categorical_columns:
             self.df[col].fillna('Unknown', inplace=True)
 
-        # For specific columns, replace missing values with mode or a suitable default value
-        self.df['VehicleType'].fillna('Unknown', inplace=True)
-        self.df['mmcode'].fillna(self.df['mmcode'].mode()[0], inplace=True)
-
-        # Numerical Columns - Replace missing values with median or 0 where appropriate
-        numerical_columns = ['Cylinders', 'cubiccapacity', 'kilowatts', 'NumberOfDoors', 'VehicleIntroDate']
+        # Numerical Columns - Replace missing values with median
+        numerical_columns = [
+            'Cylinders', 'cubiccapacity', 'kilowatts', 'NumberOfDoors', 'RegistrationYear',
+            'CustomValueEstimate', 'CapitalOutstanding', 'CrossBorder', 'SumInsured',
+            'CalculatedPremiumPerTerm', 'TotalPremium', 'TotalClaims'
+        ]
 
         for col in numerical_columns:
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-                self.df[col].fillna(self.df[col].median(), inplace=True)
-            else:
-                print(f"Column '{col}' is not numeric, skipping median imputation.")
+            self.df[col].fillna(self.df[col].median(), inplace=True)
 
-        # Additional columns for special handling
-        self.df['CustomValueEstimate'].fillna(0, inplace=True)
-        self.df['CapitalOutstanding'].fillna(0, inplace=True)
-        self.df.drop('NumberOfVehiclesInFleet', axis=1, inplace=True)
+        # Date Columns - Replace missing values with mode
+        date_columns = ['VehicleIntroDate']
+        for col in date_columns:
+            self.df[col].fillna(self.df[col].mode()[0], inplace=True)
 
         # Binary columns where missing values could imply 'No'
-        binary_columns = ['NewVehicle', 'WrittenOff', 'Rebuilt', 'Converted', 'CrossBorder']
+        binary_columns = ['NewVehicle', 'WrittenOff', 'Rebuilt', 'Converted']
         for col in binary_columns:
-            self.df[col].fillna(0, inplace=True)
+            self.df[col] = self.df[col].map({'Yes': 1, 'No': 0}).fillna(0).astype(int)
+
+        # Handle 'mmcode' separately
+        self.df['mmcode'].fillna(self.df['mmcode'].mode()[0], inplace=True)
 
         # Check for remaining missing values
         remaining_missing = self.df.isnull().sum()
@@ -84,7 +87,7 @@ class DataAnalysis:
         missing_percentages = 100 * missing_values / len(self.df)
         missing_table = pd.concat([missing_values, missing_percentages], axis=1, keys=['Missing Values', 'Percentage'])
         display(missing_table.sort_values('Percentage', ascending=False))
-
+        
     def Univariate_analysis(self):
         # Identify numerical and categorical columns
         numerical_columns = self.df.select_dtypes(include='number').columns
@@ -146,7 +149,7 @@ class DataAnalysis:
 
         plt.tight_layout()
         plt.show()
-
+        
     def monthly_changes(self):
         # Convert 'PostalCode' to category type and 'TransactionMonth' to datetime type
         self.df['PostalCode'] = self.df['PostalCode'].astype('category')
@@ -230,7 +233,7 @@ class DataAnalysis:
         plt.tight_layout()
         plt.show()
 
-    def customer_segmentation_analysis(df, n_clusters=5):
+    def customer_segmentation_analysis(self, n_clusters=5):
         """
         Perform a creative analysis on car insurance data, including customer segmentation, risk profiling,
         and claim pattern analysis.
@@ -244,10 +247,10 @@ class DataAnalysis:
         - cluster_analysis_plot: Visual plot showing the cluster distribution.
         """
         # Select key features for segmentation (you can adjust this based on your dataset)
-        features = ['total_premium', 'total_claims', 'vehicle_age', 'annual_mileage', 'claim_frequency']
+        features = ['TotalPremium', 'TotalClaims', 'RegistrationYear', 'SumInsured', 'CalculatedPremiumPerTerm']  # Adjusted features
 
         # Drop missing values in selected features
-        df_segmentation = df[features].dropna()
+        df_segmentation = self.df[features].dropna()
 
         # Standardize the data
         scaler = StandardScaler()
@@ -259,7 +262,7 @@ class DataAnalysis:
         df_segmentation['Cluster'] = clusters
 
         # Add cluster labels back to the original dataset
-        df['Cluster'] = clusters
+        self.df['Cluster'] = clusters
 
         # Analyze clusters for risk profiling
         cluster_summary = df_segmentation.groupby('Cluster').mean()
@@ -269,29 +272,40 @@ class DataAnalysis:
 
         # Visualize cluster distribution using a pairplot
         plt.figure(figsize=(10, 6))
-        sns.scatterplot(x=df['total_premium'], y=df['total_claims'], hue=df['Cluster'], palette='viridis', s=100)
+        sns.scatterplot(x=self.df['TotalPremium'], y=self.df['TotalClaims'], hue=self.df['Cluster'], palette='viridis', s=100)
         plt.title('Customer Segmentation Based on Premiums and Claims')
         plt.xlabel('Total Premium')
         plt.ylabel('Total Claims')
         plt.show()
+        return cluster_summary
 
     def detect_outliers(self):
         numerical_columns = self.df.select_dtypes(include='number').columns
 
         # Create box plots for each numerical column to detect outliers
-        plt.figure(figsize=(15, len(numerical_columns) * 5))
+        n_cols = 3  # Set number of columns for subplots
+        n_rows = int(np.ceil(len(numerical_columns) / n_cols))  # Set number of rows based on number of columns
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
+        axes = axes.flatten()  # Flatten the axes for easier indexing
 
-        for i, col in enumerate(numerical_columns, 1):
-            plt.subplot(len(numerical_columns), 1, i)
-            sns.boxplot(y=self.df[col], color='skyblue')  # Changed x to y for vertical orientation
-            plt.title(f'Box Plot of {col}')
-            plt.ylabel(col)
-            plt.tight_layout()
+        for i, col in enumerate(numerical_columns):
+            sns.boxplot(data=self.df[col].dropna(), ax=axes[i])  # Drop missing values for each column
+            axes[i].set_title(f"Boxplot of {col}")
+            axes[i].set_xlabel(col)
+            axes[i].set_ylabel("Values")
 
+        # Remove extra subplots if any
+        for j in range(i + 1, len(axes)):
+            fig.delaxes(axes[j])
+
+        plt.tight_layout()
         plt.show()
 
     def creative_visualizations(self):
-        # Identify the top 15 postal codes based on TotalPremium
+        # Ensure 'PostalCode' is treated as a string or category for consistent filtering
+        self.df['PostalCode'] = self.df['PostalCode'].astype(str)
+
+        # Identify the top 15 postal codes based on the mean of TotalPremium
         top_15_postal_codes = self.df.groupby('PostalCode')['TotalPremium'].mean().nlargest(15).index
 
         # Filter the DataFrame to include only the top 15 postal codes
@@ -305,7 +319,11 @@ class DataAnalysis:
         # Before creating a heatmap, ensure only numeric data is used
         plt.figure(figsize=(10, 8))
 
-        correlation_columns = df_top_15[['Cylinders', 'cubiccapacity', 'kilowatts', 'CustomValueEstimate', 'CapitalOutstanding', 'SumInsured', 'CalculatedPremiumPerTerm', 'TotalPremium', 'TotalClaims']]
+        correlation_columns = df_top_15[['Cylinders', 'cubiccapacity', 'kilowatts', 'CustomValueEstimate', 
+                                        'CapitalOutstanding', 'SumInsured', 'CalculatedPremiumPerTerm', 
+                                        'TotalPremium', 'TotalClaims']]
+
+        # Ensure all columns are numeric, coerce invalid ones and drop columns with all NaNs
         correlation_columns_numeric = correlation_columns.apply(pd.to_numeric, errors='coerce')
         correlation_columns_numeric = correlation_columns_numeric.dropna(axis=1, how='all')
 
@@ -317,8 +335,8 @@ class DataAnalysis:
         plt.title('Heatmap of Correlation Matrix (Top 15 Postal Codes)')
         plt.show()
 
-        # Violin Plot for distribution analysis
-        plt.figure(figsize=(16, 6))  # Increase the figure size to make it wider
+        # Violin Plot for distribution analysis of TotalPremium by PostalCode for the top 15
+        plt.figure(figsize=(16, 6))  # Increase the figure size for clarity
         sns.violinplot(x='PostalCode', y='TotalPremium', data=df_top_15, palette='Set2')
         plt.title('Violin Plot of Total Premium Distribution by PostalCode (Top 15)')
 
@@ -328,7 +346,6 @@ class DataAnalysis:
         # Adjust layout to fit the labels
         plt.tight_layout()
         plt.show()
-
 
 
     def run_analysis(self):
@@ -341,6 +358,8 @@ class DataAnalysis:
         self.monthly_changes()
         self.correlation_analysis()
         self.trends_over_geography()
-        self.customer_segmentation_analysis
+        cluster_summary = self.customer_segmentation_analysis()
         self.detect_outliers()
         self.creative_visualizations()
+
+        return cluster_summary
