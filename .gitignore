@@ -1,3 +1,33 @@
 /data
 /.dvc
-/week3
+/scripts/__pycache__/
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment
+week3/
+
+# VS Code settings
+.vscode/
+
+# IDE specific files
+.idea/
+
+
+# Windows system files
+Thumbs.db
+
+# Logs
+*.log
+
+# Misc
+*.tmp
+*.bak
+*.swp
+
